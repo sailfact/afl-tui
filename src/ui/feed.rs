@@ -43,20 +43,22 @@ pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
 /// X positions place each event at its period's offset plus seconds into the
 /// period; period lengths come from the match clock when available.
 pub fn worm_points(events: &[ScoringEvent], clock: Option<&MatchClock>) -> Vec<(f64, f64)> {
-    let offsets = period_offsets(events, clock);
+    let bounds = period_bounds(events, clock);
     let mut pts = vec![(0.0, 0.0)];
     for e in events {
         let p = e.period_number.max(1) as usize;
-        let x = offsets.get(p - 1).copied().unwrap_or(0) + e.period_seconds;
+        let x = bounds.get(p - 1).copied().unwrap_or(0) + e.period_seconds;
         pts.push((x as f64, e.margin() as f64));
     }
     pts
 }
 
-/// Cumulative start offset (seconds) of each period, 1-indexed by position.
-/// Each period's length is the longest of: the match clock's elapsed seconds,
-/// the latest scoring event seen in it, or the nominal quarter length.
-pub fn period_offsets(events: &[ScoringEvent], clock: Option<&MatchClock>) -> Vec<i64> {
+/// Cumulative period boundaries (seconds): element p-1 is period p's start
+/// and the final element is the end of the last period, so every worm point
+/// lies within the boundaries. Each period's length is the longest of: the
+/// match clock's elapsed seconds, the latest scoring event seen in it, or
+/// the nominal quarter length.
+pub fn period_bounds(events: &[ScoringEvent], clock: Option<&MatchClock>) -> Vec<i64> {
     let max_period = events
         .iter()
         .map(|e| e.period_number)
@@ -69,10 +71,10 @@ pub fn period_offsets(events: &[ScoringEvent], clock: Option<&MatchClock>) -> Ve
         .unwrap_or(1)
         .max(1);
 
-    let mut offsets = Vec::with_capacity(max_period as usize);
+    let mut bounds = Vec::with_capacity(max_period as usize + 1);
     let mut acc = 0i64;
     for p in 1..=max_period {
-        offsets.push(acc);
+        bounds.push(acc);
         let from_clock = clock
             .and_then(|c| c.periods.iter().find(|x| x.period_number == p))
             .map(|x| x.period_seconds)
@@ -85,7 +87,8 @@ pub fn period_offsets(events: &[ScoringEvent], clock: Option<&MatchClock>) -> Ve
             .unwrap_or(0);
         acc += from_clock.max(from_events).max(NOMINAL_PERIOD_SECS);
     }
-    offsets
+    bounds.push(acc);
+    bounds
 }
 
 fn draw_worm(frame: &mut Frame, app: &App, area: Rect) {
@@ -95,13 +98,8 @@ fn draw_worm(frame: &mut Frame, app: &App, area: Rect) {
     let clock = score.and_then(|s| s.match_clock.as_ref());
 
     let pts = worm_points(events, clock);
-    let offsets = period_offsets(events, clock);
-    let x_max = offsets.last().copied().unwrap_or(0) as f64
-        + offsets
-            .len()
-            .checked_sub(2)
-            .map(|i| offsets[i + 1] - offsets[i])
-            .unwrap_or(NOMINAL_PERIOD_SECS) as f64;
+    let bounds = period_bounds(events, clock);
+    let x_max = bounds.last().copied().unwrap_or(NOMINAL_PERIOD_SECS) as f64;
     let y_max = pts
         .iter()
         .map(|(_, y)| y.abs())
@@ -119,10 +117,9 @@ fn draw_worm(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let zero = [(0.0, 0.0), (x_max, 0.0)];
-    // Vertical quarter-break markers.
-    let breaks: Vec<[(f64, f64); 2]> = offsets
+    // Vertical quarter-break markers (interior boundaries only).
+    let breaks: Vec<[(f64, f64); 2]> = bounds[1..bounds.len() - 1]
         .iter()
-        .skip(1)
         .map(|&x| [(x as f64, -y_max), (x as f64, y_max)])
         .collect();
 
@@ -167,7 +164,7 @@ fn draw_worm(frame: &mut Frame, app: &App, area: Rect) {
         title.push(live_indicator(md.last_updated));
     }
 
-    let x_labels: Vec<Span> = (1..=offsets.len())
+    let x_labels: Vec<Span> = (1..bounds.len())
         .map(|p| {
             Span::styled(
                 crate::ui::period_label(p as u32),
@@ -331,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn period_offsets_use_clock_lengths() {
+    fn period_bounds_use_clock_lengths() {
         let clock = MatchClock {
             periods: vec![
                 Period {
@@ -347,9 +344,36 @@ mod tests {
             ],
         };
         let events = vec![ev(1, 2100, 6, 0), ev(2, 20, 12, 0)];
-        let offsets = period_offsets(&events, Some(&clock));
-        assert_eq!(offsets, vec![0, 2105]);
+        let bounds = period_bounds(&events, Some(&clock));
+        assert_eq!(bounds, vec![0, 2105, 2105 + NOMINAL_PERIOD_SECS]);
         let pts = worm_points(&events, Some(&clock));
         assert_eq!(pts[2], (2125.0, 12.0));
+    }
+
+    #[test]
+    fn last_period_longer_than_previous_stays_in_bounds() {
+        // Final quarter runs longer than the earlier ones; its events must
+        // still fall within the last period boundary used for the x-axis.
+        let clock = MatchClock {
+            periods: vec![
+                Period {
+                    period_number: 1,
+                    period_seconds: 2000,
+                    period_completed: true,
+                },
+                Period {
+                    period_number: 2,
+                    period_seconds: 2400,
+                    period_completed: false,
+                },
+            ],
+        };
+        let events = vec![ev(1, 1990, 6, 0), ev(2, 2350, 12, 0)];
+        let bounds = period_bounds(&events, Some(&clock));
+        assert_eq!(bounds, vec![0, 2000, 4400]);
+        let pts = worm_points(&events, Some(&clock));
+        let end = *bounds.last().unwrap() as f64;
+        assert!(pts.iter().all(|&(x, _)| x <= end));
+        assert_eq!(pts[2], (4350.0, 12.0));
     }
 }
