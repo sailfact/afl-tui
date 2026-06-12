@@ -64,10 +64,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     match app.tab {
         StatsTab::TeamStats => draw_team_stats(frame, app, body),
         StatsTab::HomePlayers | StatsTab::AwayPlayers => draw_players(frame, app, body),
+        StatsTab::Feed => super::feed::draw(frame, app, body),
     }
 
     let hints = match app.tab {
         StatsTab::TeamStats => " Tab switch view   r refresh   Esc back   q quit",
+        StatsTab::Feed => " Tab switch view   ↑/↓ scroll   r refresh   Esc back   q quit",
         _ => {
             " Tab switch view   ↑/↓ scroll   sort: d g k h m t c f   r refresh   Esc back   q quit"
         }
@@ -210,6 +212,7 @@ fn draw_tabs(frame: &mut Frame, app: &App, area: Rect) {
         "Team Stats".to_string(),
         format!("{home} Players"),
         format!("{away} Players"),
+        "Feed".to_string(),
     ])
     .select(app.tab.index())
     .highlight_style(Style::new().fg(Color::Red).add_modifier(Modifier::BOLD));

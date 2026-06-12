@@ -109,7 +109,12 @@ fn handle_key(
             KeyCode::Tab => {
                 app.tab = app.tab.next();
                 app.player_row = 0;
+                app.feed_row = 0;
             }
+            KeyCode::Up if app.tab == StatsTab::Feed => {
+                app.feed_row = app.feed_row.saturating_sub(1)
+            }
+            KeyCode::Down if app.tab == StatsTab::Feed => app.feed_row += 1, // clamped at render
             KeyCode::Up => app.player_row = app.player_row.saturating_sub(1),
             KeyCode::Down => app.player_row += 1, // clamped against roster size at render
             KeyCode::Char('r') => {
@@ -118,7 +123,7 @@ fn handle_key(
                 }
             }
             KeyCode::Char(c) => {
-                if app.tab != StatsTab::TeamStats
+                if matches!(app.tab, StatsTab::HomePlayers | StatsTab::AwayPlayers)
                     && let Some(key) = sort_key(c)
                 {
                     app.sort = key;
