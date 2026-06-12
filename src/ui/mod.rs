@@ -1,3 +1,4 @@
+mod feed;
 mod fixture;
 mod match_view;
 

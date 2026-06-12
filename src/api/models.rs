@@ -143,6 +143,80 @@ pub struct CfsScore {
     pub match_clock: Option<MatchClock>,
     #[serde(default)]
     pub weather: Option<Weather>,
+    #[serde(default)]
+    pub score_worm: Option<ScoreWorm>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScoreWorm {
+    #[serde(default)]
+    pub scoring_events: Vec<ScoringEvent>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScoringEvent {
+    #[serde(default)]
+    pub period_number: u32,
+    #[serde(default)]
+    pub period_seconds: i64,
+    #[serde(default)]
+    pub score_type: String,
+    #[serde(default)]
+    pub score_value: i64,
+    #[serde(default)]
+    pub aggregate_home_score: i64,
+    #[serde(default)]
+    pub aggregate_away_score: i64,
+    #[serde(default)]
+    pub team_name: Option<WormTeam>,
+    #[serde(default)]
+    pub player_score: Option<WormPlayerScore>,
+}
+
+impl ScoringEvent {
+    /// Home lead (negative when away is in front).
+    pub fn margin(&self) -> i64 {
+        self.aggregate_home_score - self.aggregate_away_score
+    }
+    pub fn is_goal(&self) -> bool {
+        self.score_type.eq_ignore_ascii_case("GOAL")
+    }
+    pub fn team_abbr(&self) -> &str {
+        self.team_name
+            .as_ref()
+            .map(|t| t.team_abbr.as_str())
+            .unwrap_or("")
+    }
+    pub fn player_name(&self) -> String {
+        self.player_score
+            .as_ref()
+            .map(|p| {
+                let n = &p.player.player_name;
+                format!("{}. {}", initial(&n.given_name), n.surname)
+            })
+            .unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WormTeam {
+    #[serde(default)]
+    pub team_abbr: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WormPlayerScore {
+    pub player: WormPlayer,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WormPlayer {
+    pub player_name: PlayerName,
 }
 
 #[derive(Debug, Clone, Deserialize)]

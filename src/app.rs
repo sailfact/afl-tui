@@ -17,6 +17,7 @@ pub enum StatsTab {
     TeamStats,
     HomePlayers,
     AwayPlayers,
+    Feed,
 }
 
 impl StatsTab {
@@ -24,7 +25,8 @@ impl StatsTab {
         match self {
             Self::TeamStats => Self::HomePlayers,
             Self::HomePlayers => Self::AwayPlayers,
-            Self::AwayPlayers => Self::TeamStats,
+            Self::AwayPlayers => Self::Feed,
+            Self::Feed => Self::TeamStats,
         }
     }
     pub fn index(self) -> usize {
@@ -32,6 +34,7 @@ impl StatsTab {
             Self::TeamStats => 0,
             Self::HomePlayers => 1,
             Self::AwayPlayers => 2,
+            Self::Feed => 3,
         }
     }
 }
@@ -54,6 +57,7 @@ pub struct App {
     pub tab: StatsTab,
     pub sort: StatKey,
     pub player_row: usize,
+    pub feed_row: usize,
     pub error: Option<String>,
     pub should_quit: bool,
 }
@@ -77,6 +81,7 @@ impl App {
             tab: StatsTab::TeamStats,
             sort: StatKey::Disposals,
             player_row: 0,
+            feed_row: 0,
             error: None,
             should_quit: false,
         }
@@ -136,6 +141,7 @@ impl App {
         self.screen = Screen::Match;
         self.tab = StatsTab::TeamStats;
         self.player_row = 0;
+        self.feed_row = 0;
         Some(id)
     }
 
@@ -169,7 +175,7 @@ impl App {
         let list = match self.tab {
             StatsTab::HomePlayers => &stats.home_team_player_stats,
             StatsTab::AwayPlayers => &stats.away_team_player_stats,
-            StatsTab::TeamStats => return Vec::new(),
+            StatsTab::TeamStats | StatsTab::Feed => return Vec::new(),
         };
         let mut players: Vec<_> = list.iter().collect();
         players.sort_by(|a, b| {
@@ -179,5 +185,16 @@ impl App {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         players
+    }
+
+    /// Scoring events from the match's score worm, in match order.
+    pub fn scoring_events(&self) -> &[crate::api::models::ScoringEvent] {
+        self.match_data
+            .as_ref()
+            .and_then(|md| md.item.as_ref())
+            .and_then(|i| i.score.as_ref())
+            .and_then(|s| s.score_worm.as_ref())
+            .map(|w| w.scoring_events.as_slice())
+            .unwrap_or(&[])
     }
 }

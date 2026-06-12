@@ -50,6 +50,34 @@ fn parses_match_item() {
 }
 
 #[test]
+fn parses_score_worm() {
+    let item: MatchItem = serde_json::from_str(&fixture("match_item.json")).unwrap();
+    let score = item.score.unwrap();
+    let worm = score.score_worm.unwrap();
+    assert!(!worm.scoring_events.is_empty());
+
+    let first = &worm.scoring_events[0];
+    assert_eq!(first.period_number, 1);
+    assert_eq!(first.period_seconds, 128);
+    assert_eq!(first.score_type, "BEHIND");
+    assert!(!first.is_goal());
+    assert_eq!(first.player_name(), "C. Weightman");
+    assert_eq!(first.team_abbr(), "WB");
+    assert_eq!(first.margin(), 1);
+
+    // The last event's running totals must match the final score.
+    let last = worm.scoring_events.last().unwrap();
+    assert_eq!(
+        last.aggregate_home_score,
+        score.home_team_score.match_score.total_score
+    );
+    assert_eq!(
+        last.aggregate_away_score,
+        score.away_team_score.match_score.total_score
+    );
+}
+
+#[test]
 fn parses_player_stats() {
     let res: PlayerStatsResponse = serde_json::from_str(&fixture("player_stats.json")).unwrap();
     assert!(res.home_team_player_stats.len() >= 22);
