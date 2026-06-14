@@ -8,6 +8,8 @@ use crate::api::models::{
     CfsScore, PlayerEntry, ScoreLine, StatKey, status_is_concluded, status_is_live,
 };
 use crate::app::{App, StatsTab};
+use crate::teams::{self, Rgb};
+use crate::ui::LogoRenderer;
 
 const PLAYER_COLUMNS: &[(&str, StatKey)] = &[
     ("G", StatKey::Goals),
@@ -50,16 +52,16 @@ const TEAM_COMPARISON: &[(&str, StatKey)] = &[
     ("Frees Against", StatKey::FreesAgainst),
 ];
 
-pub fn draw(frame: &mut Frame, app: &mut App) {
+pub fn draw(frame: &mut Frame, app: &mut App, logos: &mut LogoRenderer) {
     let [scoreboard, tabs, body, footer] = Layout::vertical([
-        Constraint::Length(6),
+        Constraint::Length(9),
         Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(1),
     ])
     .areas(frame.area());
 
-    draw_scoreboard(frame, app, scoreboard);
+    draw_scoreboard(frame, app, logos, scoreboard);
     draw_tabs(frame, app, tabs);
     match app.tab {
         StatsTab::TeamStats => draw_team_stats(frame, app, body),
@@ -80,7 +82,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
 }
 
-fn draw_scoreboard(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_scoreboard(frame: &mut Frame, app: &App, logos: &mut LogoRenderer, area: Rect) {
     let Some(md) = &app.match_data else { return };
     let fixture = &md.fixture;
     let score = md.item.as_ref().and_then(|i| i.score.as_ref());
@@ -97,6 +99,9 @@ fn draw_scoreboard(frame: &mut Frame, app: &App, area: Rect) {
     let home_winning = home_line.total_score > away_line.total_score;
     let away_winning = away_line.total_score > home_line.total_score;
 
+    let home_team = teams::lookup(&fixture.home.team.nickname, &fixture.home.team.name);
+    let away_team = teams::lookup(&fixture.away.team.nickname, &fixture.away.team.name);
+
     let block = Block::bordered()
         .border_style(Style::new().fg(Color::DarkGray))
         .title(
@@ -109,13 +114,62 @@ fn draw_scoreboard(frame: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    // Flank the score block with each club's emblem when there's room, keeping
+    // the logo / scores / logo trio centred. A square emblem needs ~2 columns
+    // per row to look square (terminal cells are about twice as tall as wide).
+    let logo_w = inner.height.saturating_mul(2);
+    let score_w: u16 = 46;
+    let center = if logo_w > 0 && inner.width >= logo_w * 2 + score_w {
+        let [_, left, mid, right, _] = Layout::horizontal([
+            Constraint::Min(0),
+            Constraint::Length(logo_w),
+            Constraint::Length(score_w),
+            Constraint::Length(logo_w),
+            Constraint::Min(0),
+        ])
+        .areas(inner);
+        if let Some(t) = home_team {
+            logos.draw(frame, t, square_in(left));
+        }
+        if let Some(t) = away_team {
+            logos.draw(frame, t, square_in(right));
+        }
+        mid
+    } else {
+        inner
+    };
+
     let lines = vec![
-        team_score_line(&fixture.home.team.name, home_line, home_winning),
-        team_score_line(&fixture.away.team.name, away_line, away_winning),
+        team_score_line(
+            &fixture.home.team.name,
+            home_line,
+            home_winning,
+            home_team.map(|t| t.score),
+        ),
+        team_score_line(
+            &fixture.away.team.name,
+            away_line,
+            away_winning,
+            away_team.map(|t| t.score),
+        ),
         Line::from(""),
         status_line,
     ];
-    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), inner);
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), center);
+}
+
+/// Largest aspect-correct (≈square) rect centred within `col`, assuming terminal
+/// cells are about twice as tall as they are wide. Centring keeps the emblem
+/// level with the score text instead of floating to the column's top-left.
+fn square_in(col: Rect) -> Rect {
+    let width = col.width.min(col.height.saturating_mul(2)).max(1);
+    let height = (width / 2).min(col.height).max(1);
+    Rect {
+        x: col.x + (col.width - width) / 2,
+        y: col.y + (col.height - height) / 2,
+        width,
+        height,
+    }
 }
 
 fn simple_to_line(s: Option<crate::api::models::SimpleScore>) -> ScoreLine {
@@ -129,19 +183,31 @@ fn simple_to_line(s: Option<crate::api::models::SimpleScore>) -> ScoreLine {
     }
 }
 
-fn team_score_line(name: &str, score: ScoreLine, winning: bool) -> Line<'static> {
-    let style = if winning {
-        Style::new().bold().fg(Color::White)
-    } else {
-        Style::new().fg(Color::Gray)
-    };
-    Line::from(Span::styled(
-        format!(
-            "{name:<22} {:>2}.{:<2} {:>4}",
-            score.goals, score.behinds, score.total_score
+fn team_score_line(
+    name: &str,
+    score: ScoreLine,
+    winning: bool,
+    color: Option<Rgb>,
+) -> Line<'static> {
+    let team_color = color.map(|(r, g, b)| Color::Rgb(r, g, b));
+    let name_color = team_color.unwrap_or(if winning { Color::White } else { Color::Gray });
+    let total_color = team_color.unwrap_or(Color::White);
+
+    let mut name_style = Style::new().fg(name_color);
+    if winning {
+        name_style = name_style.bold();
+    }
+    Line::from(vec![
+        Span::styled(format!("{name:<20}"), name_style),
+        Span::styled(
+            format!(" {:>2}.{:<2} ", score.goals, score.behinds),
+            Style::new().fg(Color::DarkGray),
         ),
-        style,
-    ))
+        Span::styled(
+            format!("{:>4}", score.total_score),
+            Style::new().fg(total_color).bold(),
+        ),
+    ])
 }
 
 fn status_text(app: &App, score: Option<&CfsScore>) -> Line<'static> {
@@ -364,4 +430,35 @@ fn draw_loading(frame: &mut Frame, area: Rect) {
             ..area
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn square_in_fills_an_aspect_correct_column() {
+        // A 2:1 column (width == 2*height) should be filled exactly, no offset.
+        let r = square_in(Rect::new(10, 3, 14, 7));
+        assert_eq!(r, Rect::new(10, 3, 14, 7));
+    }
+
+    #[test]
+    fn square_in_centres_within_an_oversized_column() {
+        // A too-wide column keeps the ~square footprint and centres it.
+        let r = square_in(Rect::new(0, 0, 30, 7));
+        assert_eq!(r.width, 14); // height * 2
+        assert_eq!(r.height, 7);
+        assert_eq!(r.x, 8); // (30 - 14) / 2
+        assert_eq!(r.y, 0);
+    }
+
+    #[test]
+    fn square_in_is_height_limited_when_narrow() {
+        // A narrow column shrinks height to keep the 2:1 ratio and centres it.
+        let r = square_in(Rect::new(0, 0, 8, 7));
+        assert_eq!(r.width, 8);
+        assert_eq!(r.height, 4); // width / 2
+        assert_eq!(r.y, 1); // (7 - 4) / 2
+    }
 }

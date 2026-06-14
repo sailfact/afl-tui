@@ -1,16 +1,19 @@
 mod feed;
 mod fixture;
+mod logo;
 mod match_view;
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
 use ratatui::Frame;
 
+pub use logo::{LogoRenderer, emblem_image};
+
 use crate::app::{App, Screen};
 
-pub fn draw(frame: &mut Frame, app: &mut App) {
+pub fn draw(frame: &mut Frame, app: &mut App, logos: &mut LogoRenderer) {
     match app.screen {
         Screen::Fixture => fixture::draw(frame, app),
-        Screen::Match => match_view::draw(frame, app),
+        Screen::Match => match_view::draw(frame, app, logos),
     }
 }
 

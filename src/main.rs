@@ -30,12 +30,14 @@ async fn run(
     mut event_rx: mpsc::UnboundedReceiver<DataEvent>,
 ) -> Result<()> {
     let mut app = App::new();
+    // Query the terminal once for its image-graphics capabilities.
+    let mut logos = ui::LogoRenderer::new();
     let mut input = EventStream::new();
     // Redraw tick keeps the live clock / "updated Xs ago" fresh.
     let mut redraw = tokio::time::interval(Duration::from_millis(500));
 
     loop {
-        terminal.draw(|frame| ui::draw(frame, &mut app))?;
+        terminal.draw(|frame| ui::draw(frame, &mut app, &mut logos))?;
 
         tokio::select! {
             maybe_event = input.next() => {
