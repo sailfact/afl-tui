@@ -2,27 +2,77 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState};
+use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState, Tabs};
 
 use crate::api::models::{FixtureMatch, SimpleScore};
-use crate::app::App;
+use crate::app::{App, MainTab};
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    let [header, body, footer] = Layout::vertical([
+    let [header, tabs, body, footer] = Layout::vertical([
         Constraint::Length(1),
+        Constraint::Length(2),
         Constraint::Min(0),
         Constraint::Length(1),
     ])
     .areas(frame.area());
 
     draw_header(frame, app, header);
-    draw_matches(frame, app, body);
+    frame.render_widget(
+        Tabs::new(["Fixture", "Ladder"])
+            .select(if app.main_tab == MainTab::Fixture {
+                0
+            } else {
+                1
+            })
+            .highlight_style(Style::new().fg(Color::Yellow).bold())
+            .divider(" | "),
+        tabs,
+    );
+    match app.main_tab {
+        MainTab::Fixture => draw_matches(frame, app, body),
+        MainTab::Ladder => draw_ladder(frame, app, body),
+    }
 
-    let hints = " ←/→ round   ↑/↓ select   Enter open   r refresh   q quit";
+    let hints = if app.main_tab == MainTab::Fixture {
+        " Tab view   ←/→ round   ↑/↓ select   Enter open   r refresh   q quit"
+    } else {
+        " Tab view   r refresh   q quit"
+    };
     frame.render_widget(
         Paragraph::new(hints).style(Style::new().fg(Color::DarkGray)),
         footer,
     );
+}
+
+fn draw_ladder(frame: &mut Frame, app: &App, area: Rect) {
+    let rows = app.ladder.iter().enumerate().map(|(index, entry)| {
+        Row::new([
+            Cell::from(if entry.rank == 0 {
+                (index + 1).to_string()
+            } else {
+                entry.rank.to_string()
+            }),
+            Cell::from(entry.team.name.clone()),
+            Cell::from(format!("{:.0}", entry.premiership_points)),
+            Cell::from(format!("{:.1}%", entry.percentage)),
+        ])
+    });
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(5),
+            Constraint::Min(18),
+            Constraint::Length(8),
+            Constraint::Length(12),
+        ],
+    )
+    .header(Row::new(["POS", "TEAM", "PTS", "%"]).style(Style::new().fg(Color::DarkGray).bold()))
+    .block(
+        Block::new()
+            .borders(Borders::TOP)
+            .border_style(Style::new().fg(Color::DarkGray)),
+    );
+    frame.render_widget(table, area);
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {

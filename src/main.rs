@@ -9,7 +9,7 @@ use futures::StreamExt;
 use tokio::sync::mpsc;
 
 use api::models::StatKey;
-use app::{App, Screen, StatsTab};
+use app::{App, MainTab, Screen, StatsTab};
 use poller::{Cmd, DataEvent};
 
 #[tokio::main]
@@ -75,10 +75,18 @@ fn handle_key(
     match app.screen {
         Screen::Fixture => match code {
             KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Tab => {
+                app.main_tab = match app.main_tab {
+                    MainTab::Fixture => MainTab::Ladder,
+                    MainTab::Ladder => MainTab::Fixture,
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') if app.main_tab == MainTab::Fixture => {
                 app.selected = app.selected.saturating_sub(1);
             }
-            KeyCode::Down | KeyCode::Char('j') if app.selected + 1 < app.matches.len() => {
+            KeyCode::Down | KeyCode::Char('j')
+                if app.main_tab == MainTab::Fixture && app.selected + 1 < app.matches.len() =>
+            {
                 app.selected += 1;
             }
             KeyCode::Left | KeyCode::Char('h') => {
@@ -93,9 +101,13 @@ fn handle_key(
             }
             KeyCode::Char('r') => {
                 app.loading = true;
-                let _ = cmd_tx.send(Cmd::LoadRound(app.round));
+                let _ = if app.main_tab == MainTab::Fixture {
+                    cmd_tx.send(Cmd::LoadRound(app.round))
+                } else {
+                    cmd_tx.send(Cmd::LoadLadder)
+                };
             }
-            KeyCode::Enter => {
+            KeyCode::Enter if app.main_tab == MainTab::Fixture => {
                 if let Some(id) = app.open_match() {
                     let _ = cmd_tx.send(Cmd::Watch(id));
                 }

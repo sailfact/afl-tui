@@ -1,6 +1,8 @@
 use std::time::Instant;
 
-use crate::api::models::{CompSeason, FixtureMatch, MatchItem, PlayerStatsResponse, StatKey};
+use crate::api::models::{
+    CompSeason, FixtureMatch, LadderEntry, MatchItem, PlayerStatsResponse, StatKey,
+};
 use crate::poller::DataEvent;
 
 pub const MIN_ROUND: u32 = 1;
@@ -10,6 +12,12 @@ pub const MAX_ROUND: u32 = 30;
 pub enum Screen {
     Fixture,
     Match,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MainTab {
+    Fixture,
+    Ladder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +59,8 @@ pub struct App {
     pub season: Option<CompSeason>,
     pub round: u32,
     pub matches: Vec<FixtureMatch>,
+    pub ladder: Vec<LadderEntry>,
+    pub main_tab: MainTab,
     pub selected: usize,
     pub loading: bool,
     pub match_data: Option<MatchData>,
@@ -75,6 +85,8 @@ impl App {
             season: None,
             round: 0,
             matches: Vec::new(),
+            ladder: Vec::new(),
+            main_tab: MainTab::Fixture,
             selected: 0,
             loading: true,
             match_data: None,
@@ -103,6 +115,11 @@ impl App {
                     }
                     self.matches = matches;
                 }
+            }
+            DataEvent::Ladder(entries) => {
+                self.ladder = entries;
+                self.loading = false;
+                self.error = None;
             }
             DataEvent::MatchUpdate {
                 provider_id,

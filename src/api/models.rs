@@ -27,6 +27,31 @@ pub struct MatchesResponse {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LadderResponse {
+    #[serde(default)]
+    pub ladders: Vec<Ladder>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Ladder {
+    #[serde(default)]
+    pub entries: Vec<LadderEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LadderEntry {
+    #[serde(default, alias = "position")]
+    pub rank: u32,
+    pub team: Team,
+    #[serde(default, alias = "points")]
+    pub premiership_points: f64,
+    #[serde(default)]
+    pub percentage: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FixtureMatch {
     pub provider_id: String,
     #[serde(default)]

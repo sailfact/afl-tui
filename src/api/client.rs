@@ -47,6 +47,16 @@ impl AflClient {
         Ok(res.matches)
     }
 
+    pub async fn ladder(&self, comp_season_id: u32) -> Result<Vec<LadderEntry>> {
+        let url = format!("{AFLAPI}/afl/v2/compseasons/{comp_season_id}/ladders");
+        let res: LadderResponse = self.get_json(&url).await?;
+        Ok(res
+            .ladders
+            .into_iter()
+            .flat_map(|ladder| ladder.entries)
+            .collect())
+    }
+
     pub async fn match_item(&self, provider_id: &str) -> Result<MatchItem> {
         let url = format!("{CFS}/cfs/afl/matchItem/{provider_id}");
         self.cfs_get(&url).await

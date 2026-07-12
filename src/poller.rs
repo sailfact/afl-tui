@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
 use crate::api::AflClient;
-use crate::api::models::{CompSeason, FixtureMatch, MatchItem, PlayerStatsResponse};
+use crate::api::models::{CompSeason, FixtureMatch, LadderEntry, MatchItem, PlayerStatsResponse};
 
 /// How often a watched live match is refreshed.
 const MATCH_REFRESH: Duration = Duration::from_secs(20);
@@ -17,6 +17,7 @@ pub enum Cmd {
     /// Fetch seasons, then the current round of the latest season.
     Init,
     LoadRound(u32),
+    LoadLadder,
     /// Start watching a match (providerId); refreshes while it is live.
     Watch(String),
     Unwatch,
@@ -29,6 +30,7 @@ pub enum DataEvent {
         round: u32,
         matches: Vec<FixtureMatch>,
     },
+    Ladder(Vec<LadderEntry>),
     MatchUpdate {
         provider_id: String,
         item: Box<MatchItem>,
@@ -79,6 +81,7 @@ async fn run(
                                     let _ = tx.send(DataEvent::Season(s));
                                     round = Some(current);
                                     round_has_live = load_round(&client, &tx, season.as_ref(), current).await;
+                                    load_ladder(&client, &tx, season.as_ref()).await;
                                 } else {
                                     let _ = tx.send(DataEvent::Error("no seasons returned by AFL API".into()));
                                 }
@@ -90,6 +93,7 @@ async fn run(
                         round = Some(r);
                         round_has_live = load_round(&client, &tx, season.as_ref(), r).await;
                     }
+                    Cmd::LoadLadder => load_ladder(&client, &tx, season.as_ref()).await,
                     Cmd::Watch(id) => {
                         watching_live = fetch_match(&client, &tx, &id).await;
                         watching = Some(id);
@@ -108,6 +112,22 @@ async fn run(
                         round_has_live = load_round(&client, &tx, season.as_ref(), r).await;
                     }
             }
+        }
+    }
+}
+
+async fn load_ladder(
+    client: &AflClient,
+    tx: &mpsc::UnboundedSender<DataEvent>,
+    season: Option<&CompSeason>,
+) {
+    let Some(season) = season else { return };
+    match client.ladder(season.id).await {
+        Ok(entries) => {
+            let _ = tx.send(DataEvent::Ladder(entries));
+        }
+        Err(e) => {
+            let _ = tx.send(DataEvent::Error(format!("loading ladder: {e:#}")));
         }
     }
 }
